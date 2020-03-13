@@ -112,6 +112,7 @@ public abstract class BaseGenericObjectPool<T> extends BaseObject {
 
     // Monitoring (primarily JMX) attributes
     private final ObjectName objectName;
+    // 有趣的方式，在构造方法（即创建此对象时）中记录当前的调用栈
     private final String creationStackTrace;
     private final AtomicLong borrowedCount = new AtomicLong(0);
     private final AtomicLong returnedCount = new AtomicLong(0);
@@ -119,6 +120,7 @@ public abstract class BaseGenericObjectPool<T> extends BaseObject {
     final AtomicLong destroyedCount = new AtomicLong(0);
     final AtomicLong destroyedByEvictorCount = new AtomicLong(0);
     final AtomicLong destroyedByBorrowValidationCount = new AtomicLong(0);
+    // 这里的活跃时间啥的，都是根据近 n 次取平均值得到的
     private final StatsStore activeTimes = new StatsStore(MEAN_TIMING_STATS_CACHE_SIZE);
     private final StatsStore idleTimes = new StatsStore(MEAN_TIMING_STATS_CACHE_SIZE);
     private final StatsStore waitTimes = new StatsStore(MEAN_TIMING_STATS_CACHE_SIZE);
@@ -776,6 +778,7 @@ public abstract class BaseGenericObjectPool<T> extends BaseObject {
      * running when this method is called, it is stopped and replaced with a
      * new evictor with the specified delay.</p>
      *
+     * 这里这么修改的原因是：这个方法实际上往上追溯，是被构造器调用的，如果这个能被子类修改，可能造成 evictor 初始化出问题
      * <p>This method needs to be final, since it is called from a constructor.
      * See POOL-195.</p>
      *
@@ -985,6 +988,7 @@ public abstract class BaseGenericObjectPool<T> extends BaseObject {
         idleTimes.add(p.getIdleTimeMillis());
         waitTimes.add(waitTime);
 
+        // TIPS 指的借鉴的无锁更新值
         // lock-free optimistic-locking maximum
         long currentMax;
         do {
@@ -1327,6 +1331,7 @@ public abstract class BaseGenericObjectPool<T> extends BaseObject {
             this.instance = instance;
         }
 
+        // 这个覆盖主要是需要依靠 instance 作为 map 的 key，而不是 IdentityWrapper 本身
         @Override
         public int hashCode() {
             return System.identityHashCode(instance);

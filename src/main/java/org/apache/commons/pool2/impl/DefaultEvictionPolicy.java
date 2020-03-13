@@ -45,6 +45,8 @@ public class DefaultEvictionPolicy<T> implements EvictionPolicy<T> {
     public boolean evict(final EvictionConfig config, final PooledObject<T> underTest,
             final int idleCount) {
 
+        // IdleSoftEvictTime 是在当前池子的空闲对象大于设定的 minIdle 时才生效，换句话说，如果空闲的数量过多，
+        // 这时候判断下是否超过 IdleSoftEvictTime，此值应小于 IdleEvictTime，可以实现多出 minIdle 的对象可以更快的被回收
         if ((config.getIdleSoftEvictTime() < underTest.getIdleTimeMillis() &&
                 config.getMinIdle() < idleCount) ||
                 config.getIdleEvictTime() < underTest.getIdleTimeMillis()) {
