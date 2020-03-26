@@ -106,6 +106,8 @@ public abstract class BaseGenericObjectPool<T> extends BaseObject {
      * environment, the context class loader for the evictor thread may not have
      * visibility of the correct factory. See POOL-161. Uses a weak reference to
      * avoid potential memory leaks if the Pool is discarded rather than closed.
+     *
+     * https://issues.apache.org/jira/browse/POOL-161
      */
     private final WeakReference<ClassLoader> factoryClassLoader;
 

@@ -475,6 +475,8 @@ public class GenericKeyedObjectPool<K, T> extends BaseGenericObjectPool<T>
                 } catch (final Exception e) {
                     swallowException(e);
                 }
+                // 检查下当前有没有消费者在等待 idle object，有的话直接 create 一个
+                // 这算是补充行为吧
                 whenWaitersAddObject(key, objectDeque.idleObjects);
                 return;
             }
@@ -501,6 +503,7 @@ public class GenericKeyedObjectPool<K, T> extends BaseGenericObjectPool<T>
             final LinkedBlockingDeque<PooledObject<T>> idleObjects =
                     objectDeque.getIdleObjects();
 
+            // 池子关闭了 或者超过了最大空闲的上线，主动关闭这个对象
             if (isClosed() || maxIdle > -1 && maxIdle <= idleObjects.size()) {
                 try {
                     destroy(key, p, true);
@@ -508,6 +511,7 @@ public class GenericKeyedObjectPool<K, T> extends BaseGenericObjectPool<T>
                     swallowException(e);
                 }
             } else {
+                // 丢回池子
                 if (getLifo()) {
                     idleObjects.addFirst(p);
                 } else {
@@ -831,6 +835,8 @@ public class GenericKeyedObjectPool<K, T> extends BaseGenericObjectPool<T>
         for (final Map.Entry<K, ObjectDeque<T>> entry : poolMap.entrySet()) {
             final ObjectDeque<T> deque = entry.getValue();
             if (deque != null) {
+                // TIPS LinkedBlockingDeque 的这个 hasTakeWaiters 的功能还是很好用的，可以了解当前资源的等待情况
+                // 本质上是 AQS 的 ConditionObject 可以查询 waiters
                 final LinkedBlockingDeque<PooledObject<T>> pool =
                         deque.getIdleObjects();
                 if(pool.hasTakeWaiters()) {
@@ -995,17 +1001,25 @@ public class GenericKeyedObjectPool<K, T> extends BaseGenericObjectPool<T>
 
         while (loop) {
             final int newNumTotal = numTotal.incrementAndGet();
+            // TODO  这里可能要加个循环次数限制...
+            // 这里是个风险，如果限制了 maxTotal 即池子的总大小，可能会造成 create 对象的时候较长时间的循环
+            // 1. clearOldest 是删除前 15% 的 idle 连接，但是如果当前 numIdle !=0，
+            // 2. 执行 clearOldest 的时候，idleObject 又被使用了，此时会进入下一次循环（回到 1）
+            // 注意，clearOldest 是一个耗时操作，他是拿出所有的连接，构建一个 TreeMap 取前 15%
             if (maxTotal > -1 && newNumTotal > maxTotal) {
                 numTotal.decrementAndGet();
                 if (getNumIdle() == 0) {
                     return null;
                 }
+                // 这里如果查询到还有空闲的位置，会清理掉最老的
+                // 对于有的链接来说可能老的隐患更高，不如创建一个新的；也有反例的
                 clearOldest();
             } else {
                 loop = false;
             }
         }
 
+        // 下面这块就和 GenericObjectPool 中的解析一样了
         // Flag that indicates if create should:
         // - TRUE:  call the factory to create an object
         // - FALSE: return null
@@ -1121,6 +1135,8 @@ public class GenericKeyedObjectPool<K, T> extends BaseGenericObjectPool<T>
      * <p>
      * register() and deregister() must always be used as a pair.
      *
+     * 使用读写锁隔离
+     *
      * @param k The key to register
      *
      * @return The objects currently associated with the given key. If this
@@ -1139,6 +1155,7 @@ public class GenericKeyedObjectPool<K, T> extends BaseGenericObjectPool<T>
                 lock = keyLock.writeLock();
                 lock.lock();
                 objectDeque = poolMap.get(k);
+                // 二次确认是否需要创建
                 if (objectDeque == null) {
                     objectDeque = new ObjectDeque<>(fairness);
                     objectDeque.getNumInterested().incrementAndGet();
@@ -1178,6 +1195,7 @@ public class GenericKeyedObjectPool<K, T> extends BaseGenericObjectPool<T>
                 lock.unlock();
                 lock = keyLock.writeLock();
                 lock.lock();
+                // 二次确认这个 key 对应的 pool 是空的，清空这个 key。回收资源
                 if (objectDeque.getCreateCount().get() == 0 && objectDeque.getNumInterested().get() == 0) {
                     // NOTE: Keys must always be removed from both poolMap and
                     //       poolKeyList at the same time while protected by
