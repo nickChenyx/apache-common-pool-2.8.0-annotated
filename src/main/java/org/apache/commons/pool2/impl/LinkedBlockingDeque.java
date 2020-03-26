@@ -221,6 +221,15 @@ class LinkedBlockingDeque<E> extends AbstractQueue<E>
      */
     public LinkedBlockingDeque(final Collection<? extends E> c) {
         this(Integer.MAX_VALUE);
+        // TIPS ReetrantLock 保证可见性
+        /*
+            AQS 中的 state 是 volatile的. volatile为了保证可见性, 会在机器指令中加入lock指令, lock强制把缓存(工作内存)写回内存(主内存), 并失效其它线程的缓存行(MESI). 这里要注意的是, lock并不仅仅只把被volatile修饰的变量写回主内存, 而是把工作内存中的变更都写入主内存~
+
+            作者：Import Allen
+            链接：https://www.zhihu.com/question/41016480/answer/388719715
+            来源：知乎
+            著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
+         */
         lock.lock(); // Never contended, but necessary for visibility
         try {
             for (final E e : c) {
