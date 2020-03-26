@@ -24,6 +24,8 @@ import org.apache.commons.pool2.UsageTracking;
  * Base implementation for object wrappers when using a
  * {@link ProxiedObjectPool}.
  *
+ * 封装了从 pool 拿到对象之后的 proxy，提供了响应的代理切面方便操作
+ *
  * @param <T> type of the wrapped pooled object
  *
  * @since 2.0
@@ -98,6 +100,9 @@ class BaseProxyHandler<T> {
         validateProxiedObject();
         final T object = getPooledObject();
         if (usageTracking != null) {
+            // 这样一来就是所有的方法调用都会触发一次 use time 的更新
+            // TIPS 实现了操作对象自定义行为和监控调用记录的解耦
+            // 可以放在很多监控行为上
             usageTracking.use(object);
         }
         return method.invoke(object, args);
